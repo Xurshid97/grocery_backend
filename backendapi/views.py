@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, filters, generics, status
+from rest_framework import viewsets, permissions, filters, generics, status, serializers
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
@@ -15,6 +15,23 @@ from .serializers import (
     UserSerializer,
     MyTokenObtainPairSerializer
 )
+
+class UserProfileView(APIView):
+    """Return the logged-in user's profile data (addresses, orders, payments, etc.)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data)
+
+    def put(self, request):
+        serializer = UserSerializer(request.user, data=request.data, partial=True)
+        print(f"Updating user profile with data: {request.data}")  # Debugging line
+        print(f"Is serializer valid? {serializer}")  # Debugging line
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class IsOwnerOrReadOnly(permissions.BasePermission):
@@ -81,60 +98,6 @@ class TokenRefreshView(generics.GenericAPIView):
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class UserProfileView(APIView):
-    """Return the logged-in user's profile data (addresses, orders, payments, etc.)."""
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        serializer = UserSerializer(request.user)
-        return Response(serializer.data)
-
-    def put(self, request):
-        serializer = UserSerializer(request.user, data=request.data, partial=True)
-        print(f"Updating user profile with data: {request.data}")  # Debugging line
-        print(f"Is serializer valid? {serializer}")  # Debugging line
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.all()
-    serializer_class = CategorySerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    pagination_class = None  # disable pagination for categories
-
-
-class OrderViewSet(viewsets.ModelViewSet):
-    serializer_class = OrderSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        # Only allow users to see their own orders
-        return Order.objects.filter(user=self.request.user)
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-
-class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.all().order_by("-created_at")
-    serializer_class = ProductSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["name", "description"]
-    ordering_fields = ["cost", "created_at"]
-
-    def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
-
-    def get_queryset(self):
-        queryset = Product.objects.all().order_by("-created_at")
-        category_id = self.request.query_params.get("category_id")
-        if category_id:
-            queryset = queryset.filter(subcategory__category_id=category_id)  # ✅ fixed relation
-        return queryset
-
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 
@@ -156,3 +119,51 @@ class MyTokenObtainPairView(TokenObtainPairView):
             max_age=60 * 60 * 24 * 7
         )
         return response
+
+
+class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    pagination_class = None  # disable pagination for categories
+
+class ProductViewSet(viewsets.ModelViewSet):
+    queryset = Product.objects.all().order_by("-created_at")
+    serializer_class = ProductSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["name", "description"]
+    ordering_fields = ["cost", "created_at"]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def get_queryset(self):
+        queryset = Product.objects.all().order_by("-created_at")
+        category_id = self.request.query_params.get("category_id")
+        if category_id:
+            queryset = queryset.filter(subcategory__category_id=category_id)  # ✅ fixed relation
+        return queryset
+
+class OrderViewSet(viewsets.ModelViewSet):
+    serializer_class = OrderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except serializers.ValidationError as e:
+            print("Validation errors:", e.detail)  # now you will see them
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+        return super().create(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return Order.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        try:
+            serializer.save(user=self.request.user)
+        except serializers.ValidationError as e:
+            print("Validation errors:", e.detail)  # now you will see them
+            raise

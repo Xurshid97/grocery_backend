@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Product, Category, Order, SubCategory, Address, Payment, CustomUser
+from .models import Product, Category, Order, SubCategory, Address, Payment, CustomUser, OrderItem
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -46,9 +46,19 @@ class ProductSerializer(serializers.ModelSerializer):
 
 
 class AddressSerializer(serializers.ModelSerializer):
+    region = serializers.CharField(required=False, allow_blank=True)
+    city = serializers.CharField(required=False, allow_blank=True)
+    postal_code = serializers.CharField(required=False, allow_blank=True)
+    is_default = serializers.BooleanField(required=False)
+    is_delivery = serializers.BooleanField(required=False)
+
+    # user becomes current user not needed to come from outside
+    user = serializers.PrimaryKeyRelatedField(read_only=True)
+
+
     class Meta:
         model = Address
-        fields = ['*']
+        fields = ['id', 'user', 'delivery_instructions', 'street', 'district', 'region', 'city', 'postal_code', 'is_default', 'is_delivery']
 
 
 
@@ -65,20 +75,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'username', 'raqam', 'addresses', 'delivery_addresses', 'payments', 'orders']
-
-
-class OrderSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
-    product = ProductSerializer(read_only=True)
-    product_id = serializers.PrimaryKeyRelatedField(
-        queryset=Product.objects.all(), source='product', write_only=True
-    )
-
-    class Meta:
-        model = Order
-        fields = ['id', 'user', 'product', 'product_id', 'quantity', 'order_date', 'status']
-        read_only_fields = ['user', 'order_date']
+        fields = ['id', 'username', 'raqam', 'addresses', 'payments', 'orders']
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
@@ -116,3 +113,52 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         # Remove refresh token
         data.pop("refresh", None)
         return data
+
+class OrderItemSerializer(serializers.ModelSerializer):
+    product = ProductSerializer(read_only=True)
+    product_id = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(), source="product", write_only=True
+    )
+
+    class Meta:
+        model = OrderItem
+        fields = ["id", "product", "product_id", "quantity"]
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(read_only=True)  # just user ID
+    items = OrderItemSerializer(many=True)
+    delivery_address = AddressSerializer()
+
+    class Meta:
+        model = Order
+        fields = ["id", "user", "items", "order_date", "status", "delivery_address"]
+        read_only_fields = ["user", "order_date"]
+
+    def create(self, validated_data):
+        print("Validated data:", validated_data)
+        items_data = validated_data.pop("items")
+        print("Items data:", items_data)
+
+        delivery_address_data = validated_data.pop("delivery_address", None)
+        address = None
+        if delivery_address_data:
+            address, created = Address.objects.get_or_create(
+                user=self.context['request'].user,
+                street=delivery_address_data.get('street', ''),
+                district=delivery_address_data.get('district', ''),
+                region=delivery_address_data.get('region', ''),
+                city=delivery_address_data.get('city', ''),
+                postal_code=delivery_address_data.get('postal_code', ''),
+                defaults={
+                    'delivery_instructions': delivery_address_data.get('delivery_instructions', ''),
+                    'is_default': delivery_address_data.get('is_default', False),
+                    'is_delivery': delivery_address_data.get('is_delivery', True)
+                }
+            )
+        validated_data['delivery_address'] = address
+
+        order = Order.objects.create(**validated_data)
+        for item_data in items_data:
+            OrderItem.objects.create(order=order, **item_data)
+        return order
