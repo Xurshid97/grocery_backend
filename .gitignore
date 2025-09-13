@@ -1,0 +1,46 @@
+# Databases
+db.sqlite3
+
+# Django migrations (keep .py files unless you want to regenerate each time)
+backendapi/migrations/__pycache__/
+
+# Environment and secrets
+*.env
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+env/
+
+# IDE/editor files
+.vscode/
+.idea/
+
+# OS/system files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Coverage and test reports
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Keys and certificates
+*.pem
+*.key
+*.crt
+
+# Celery
+celerybeat-schedule
+
+# Static/media (should be collected on server, not tracked)
+staticfiles/
+media/
