@@ -1,15 +1,15 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
-from .models import CustomUser
+
+User = get_user_model()
 
 class CustomUserTest(TestCase):
     def setUp(self):
-        User = get_user_model()  # ✅ This gets the correct user model
-        self.user = User.objects.create_user(username="testuser", password="secret")
-        self.custom_user = CustomUser.objects.create(name="Test Object", owner=self.user)
+        self.user = User.objects.create_user(username="testuser12345678", password="secret")
 
     def test_model_str(self):
-        self.assertEqual(str(self.custom_user), "Test Object")
+        self.assertEqual(str(self.user), "testuser")
 
-    def test_object_owner(self):
-        self.assertEqual(self.custom_user.owner.username, "testuser")
+    def test_raqam_field(self):
+        # raqam should default to username
+        self.assertEqual(self.user.raqam, "12345678")
