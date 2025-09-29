@@ -8,7 +8,7 @@ class CustomUserTest(TestCase):
         self.user = User.objects.create_user(username="testuser12345678", password="secret")
 
     def test_model_str(self):
-        self.assertEqual(str(self.user), "testuser")
+        self.assertEqual(str(self.user), "testuser12345678")
 
     def test_raqam_field(self):
         # raqam should default to username
