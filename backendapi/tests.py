@@ -12,4 +12,4 @@ class CustomUserTest(TestCase):
 
     def test_raqam_field(self):
         # raqam should default to username
-        self.assertEqual(self.user.raqam, "12345678")
+        self.assertEqual(self.user.raqam, "testuser12345678")
