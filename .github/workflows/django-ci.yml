@@ -11,28 +11,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Get the code
+      # Checkout the repository
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # Update to latest version for better compatibility
 
-      # Set up Python
+      # Set up Docker Buildx for Docker Compose
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Start Docker Compose services
+      - name: Start Docker Compose
+        env:
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}  # Use GitHub Secrets for sensitive data
+        run: |
+          docker-compose up -d
+          # Wait for MySQL to be ready
+          docker-compose run web bash -c "until mysqladmin ping -h db -u user -p${MYSQL_PASSWORD:-password}; do echo 'Waiting for MySQL...'; sleep 2; done"
+
+      # Install Python (optional, for host-based steps if needed)
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5  # Update to latest version
         with:
-          python-version: "3.11"   # Change if you use another version
+          python-version: "3.11"
 
-      # Install dependencies
+      # Install dependencies (optional, if running non-Docker steps)
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Run migrations
+      # Run migrations inside Docker container
       - name: Run migrations
         run: |
-          python manage.py migrate
+          docker-compose run web python manage.py migrate
 
-      # Run tests
+      # Run tests inside Docker container
       - name: Run tests
         run: |
-          python manage.py test
+          docker-compose run web python manage.py test
+
+      # Clean up Docker Compose services
+      - name: Stop Docker Compose
+        if: always()  # Run even if previous steps fail
+        run: docker-compose down
